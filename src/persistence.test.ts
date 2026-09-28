@@ -115,6 +115,37 @@ describe('saveStore / loadStore（信封往返与原子写入）', () => {
     expect(deps.storage.getItem(tempKey)).toBeNull();
   });
 
+  it('「添加条件」产生空参数名时拒绝整张规则表，上一份有效数据保留，补齐后即可保存', () => {
+    const deps = testDeps();
+    saveStore(rulesStore, [RULE], deps);
+    const validEnvelope = deps.storage.getItem(rulesStore.key);
+
+    // 点击「添加条件」后参数名暂为空：整表保存被拒，主键与临时键都不动
+    const withEmptyCond: Rule[] = [
+      {
+        ...RULE,
+        query: [{ name: '', op: 'exists', value: '' }],
+      },
+    ];
+    const rejected = saveStore(rulesStore, withEmptyCond, deps);
+    expect(rejected.ok).toBe(false);
+    expect(rejected.invalidData).toMatch(/参数名不能为空/);
+    expect(deps.storage.getItem(rulesStore.key)).toBe(validEnvelope);
+    expect(deps.storage.getItem(rulesStore.key + '.__tmp__')).toBeNull();
+
+    // 用户在界面补齐参数名（界面数据一直保留）：最新整张表保存成功
+    const fixed: Rule[] = [
+      {
+        ...RULE,
+        query: [{ name: 'env', op: 'exists', value: '' }],
+      },
+    ];
+    const accepted = saveStore(rulesStore, fixed, deps);
+    expect(accepted.ok).toBe(true);
+    const reloaded = loadStore(rulesStore, deps);
+    expect(reloaded.value).toEqual(fixed);
+  });
+
   it('全新存储（两个键都不存在）返回默认值，不隔离任何数据', () => {
     const deps = testDeps();
     const loaded = loadStore(rulesStore, deps);

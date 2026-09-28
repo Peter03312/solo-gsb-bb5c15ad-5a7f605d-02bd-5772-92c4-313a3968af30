@@ -1,4 +1,4 @@
-import type { ChangeEvent } from 'react';
+import { useEffect, useState, type ChangeEvent } from 'react';
 import type { QueryCondition, QueryOperator, Rule } from '../types';
 import {
   formatQueryConditions,
@@ -25,6 +25,14 @@ interface Props {
   onMove: (dir: -1 | 1) => void;
   onRemove: () => void;
   onToggleBreakpoint: () => void;
+  /** 卡片 DOM 引用注册，供未保存横幅的「定位」滚动 */
+  cardRef?: (el: HTMLDivElement | null) => void;
+  /** 当前保存错误定位在本规则上（规则卡片描边提示） */
+  errorRule?: boolean;
+  /** 当前保存错误定位到的查询条件序号（0 起）；不在条件层级时为 null */
+  errorCond?: number | null;
+  /** 「定位」点击序号：每次点击递增，触发一次卡片闪烁动画；0 表示从未定位 */
+  locateNonce?: number;
 }
 
 const ACTION_LABEL: Record<Rule['action']['type'], string> = {
@@ -63,7 +71,23 @@ export function RuleCard({
   onMove,
   onRemove,
   onToggleBreakpoint,
+  cardRef,
+  errorRule = false,
+  errorCond = null,
+  locateNonce = 0,
 }: Props) {
+  // 「定位」点击时闪烁一次（动画结束自动移除 class）；nonce 归零立即取消闪烁
+  const [flashing, setFlashing] = useState(false);
+  useEffect(() => {
+    if (!locateNonce) {
+      setFlashing(false);
+      return;
+    }
+    setFlashing(true);
+    const timer = window.setTimeout(() => setFlashing(false), 1800);
+    return () => window.clearTimeout(timer);
+  }, [locateNonce]);
+
   const set = <K extends keyof Rule>(key: K, value: Rule[K]) =>
     onCommit({ ...rule, [key]: value });
   const setAction = (patch: Partial<Rule['action']>) =>
@@ -103,7 +127,8 @@ export function RuleCard({
 
   return (
     <div
-      className={`rule-card${rule.enabled ? '' : ' rule-off'}${shadow ? ' rule-shadowed' : ''}${breakpoint ? ' rule-breakpoint' : ''}`}
+      ref={cardRef}
+      className={`rule-card${rule.enabled ? '' : ' rule-off'}${shadow ? ' rule-shadowed' : ''}${breakpoint ? ' rule-breakpoint' : ''}${errorRule ? ' rule-card-error' : ''}${flashing ? ' rule-card-flash' : ''}`}
     >
       <div className="rule-head">
         <span className="rule-order">#{index + 1}</span>
@@ -235,10 +260,17 @@ export function RuleCard({
           <button onClick={addCond}>＋ 添加条件</button>
         </div>
         {rule.query.map((cond, ci) => (
-          <div className="query-cond-row" key={ci}>
+          <div
+            className={`query-cond-row${errorCond === ci ? ' query-cond-row-error' : ''}`}
+            key={ci}
+          >
             <input
+              className={
+                errorCond === ci || cond.name.trim() === '' ? 'invalid' : undefined
+              }
               placeholder="参数名"
               spellCheck={false}
+              aria-invalid={cond.name.trim() === ''}
               {...condTextProps(ci, 'name')}
             />
             <select

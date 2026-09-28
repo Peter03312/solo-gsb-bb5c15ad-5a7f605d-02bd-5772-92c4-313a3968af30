@@ -359,6 +359,100 @@ input.invalid {
   margin-top: 2px;
 }
 
+/* 保存错误定位到的查询条件行：参数名输入框描红 */
+.query-cond-row-error {
+  padding: 4px 6px;
+  margin-left: -6px;
+  margin-right: -6px;
+  border-radius: 6px;
+  background: rgba(229, 83, 75, 0.08);
+}
+
+/* ---- 规则表自动保存状态 / 未保存反馈 ---- */
+
+.rule-save-state {
+  font-size: 12.5px;
+  margin: -4px 0 10px;
+  min-height: 18px;
+}
+
+.save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.save-state.ok {
+  color: var(--ok);
+}
+
+.save-state.degraded {
+  color: var(--warn);
+}
+
+.save-state.unsaved {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.rule-save-banner {
+  margin: 0 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rule-save-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.rule-save-head button {
+  padding: 3px 10px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.rule-save-hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* 保存错误定位到的规则卡片：描边提示（断点、不可达样式叠加时仍可见） */
+.rule-card.rule-card-error {
+  border-color: var(--error);
+}
+
+/* 「定位」点击时的一次闪烁：蓝色描边光环后淡出 */
+.rule-card.rule-card-flash {
+  animation: rule-locate-flash 1.8s ease;
+}
+
+@keyframes rule-locate-flash {
+  0% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  15%,
+  55% {
+    box-shadow: 0 0 0 3px var(--accent);
+    border-color: var(--accent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rule-card.rule-card-flash {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--accent);
+  }
+}
+
 @media (max-width: 720px) {
   .rule-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

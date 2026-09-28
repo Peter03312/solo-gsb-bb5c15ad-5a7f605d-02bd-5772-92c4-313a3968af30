@@ -20,7 +20,16 @@ import {
   parseShareHash,
   type SharePayload,
 } from './share';
-import { loadManaged, rulesStore, type ManagedStore } from './persistence';
+import {
+  isStorageDegraded,
+  loadManaged,
+  rulesStore,
+  type ManagedStore,
+} from './persistence';
+import {
+  buildSaveStatus,
+  type RuleSaveStatus,
+} from './ruleSaveStatus';
 import { StorageDiagnosticsBanner } from './components/StorageDiagnosticsBanner';
 import { StorageDegradedBanner } from './components/StorageDegradedBanner';
 
@@ -67,6 +76,12 @@ export default function App() {
 
   const hist = useRuleHistory(loadRules);
   const { rules } = hist;
+  // 规则表自动保存状态：保存成功且非降级时视为已持久化；
+  // 校验失败等原因未保存时，由编辑区展示可定位到规则 / 条件的原因与未保存状态。
+  // 初始视为「已保存（与刚加载的磁盘数据一致）」，降级状态取存储适配器当前状态。
+  const [saveStatus, setSaveStatus] = useState<RuleSaveStatus>(() =>
+    buildSaveStatus({ ok: true, degraded: isStorageDegraded() }),
+  );
   const [method, setMethod] = useState(PRESETS[0].method);
   const [url, setUrl] = useState(PRESETS[0].url);
   const [sim, setSim] = useState<Simulation | null>(null);
@@ -82,9 +97,27 @@ export default function App() {
   useEffect(() => {
     // 经版本化持久化层原子写入：临时键校验通过后再替换主键，
     // 刷新 / 崩溃落在任何一步都不会读到半写入数据；
-    // 存储写失败（配额等）时由降级适配器保存在本页内存副本（顶部横幅提示，不算持久化）
-    rulesManaged?.save(rules);
+    // 校验不通过（如查询条件参数名为空）时整表不写入、不触碰任何键，
+    // 当前编辑与磁盘上的上一份有效数据都原样保留，失败原因反馈到编辑区。
+    // 存储写失败（配额等）时由降级适配器保存在本页内存副本（顶部横幅提示，不算持久化）。
+    // 每次 rules 变化（编辑、导入、撤销 / 重做、加密分享导入）都按最终规则状态重算状态。
+    const result = rulesManaged?.save(rules) ?? { ok: true as const };
+    setSaveStatus(buildSaveStatus(result));
   }, [rules]);
+
+  // 存在未保存修改（保存被校验错误等拦截）时，刷新 / 关闭页面弹出浏览器标准离开提示，
+  // 避免本轮编辑静默回退为上一份磁盘数据。仅内存降级时沿用顶部降级横幅（保存本身返回成功），
+  // 不在此处额外拦截，也不把内存保存误报为已持久化。
+  useEffect(() => {
+    if (saveStatus.saved) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // 现代浏览器忽略自定义文案，仅要求设置 returnValue 才会展示标准离开提示
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [saveStatus.saved]);
 
   const toggleBreakpoint = useCallback((ruleId: string) => {
     setBreakpoints((prev) => {
@@ -225,6 +258,7 @@ export default function App() {
             onShare={() => setSharing(true)}
             breakpoints={breakpoints}
             onToggleBreakpoint={toggleBreakpoint}
+            saveStatus={saveStatus}
           />
           <CoveragePanel rules={rules} />
           <PartialIntersectionPanel rules={rules} onUseRequest={fillRequest} />
