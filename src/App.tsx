@@ -4,6 +4,7 @@ import { simulate } from './engine';
 import { DebugSession, debugContextKey } from './debug';
 import { PRESETS } from './samples';
 import { useRuleHistory } from './useRuleHistory';
+import { useRulesSave } from './useRulesSave';
 import { RulesPanel } from './components/RulesPanel';
 import { Simulator } from './components/Simulator';
 import { TraceView } from './components/TraceView';
@@ -67,6 +68,10 @@ export default function App() {
 
   const hist = useRuleHistory(loadRules);
   const { rules } = hist;
+  // 规则表每次变化自动整表保存：校验失败 / 存储失败时反馈「未保存 + 可定位原因」，
+  // 当前编辑与磁盘上的上一份有效数据都保留；未持久化时由浏览器标准离开提示兜底。
+  // 仅内存降级沿用顶部 StorageDegradedBanner 的既有提示，不会误报已持久化。
+  const saveStatus = useRulesSave(rules, rulesManaged);
   const [method, setMethod] = useState(PRESETS[0].method);
   const [url, setUrl] = useState(PRESETS[0].url);
   const [sim, setSim] = useState<Simulation | null>(null);
@@ -78,13 +83,6 @@ export default function App() {
   // 每次调试状态变化（暂停 / 继续 / 单步）递增，强制重渲染面板
   const [, setDebugTick] = useState(0);
   const bump = useCallback(() => setDebugTick((t) => t + 1), []);
-
-  useEffect(() => {
-    // 经版本化持久化层原子写入：临时键校验通过后再替换主键，
-    // 刷新 / 崩溃落在任何一步都不会读到半写入数据；
-    // 存储写失败（配额等）时由降级适配器保存在本页内存副本（顶部横幅提示，不算持久化）
-    rulesManaged?.save(rules);
-  }, [rules]);
 
   const toggleBreakpoint = useCallback((ruleId: string) => {
     setBreakpoints((prev) => {
@@ -222,6 +220,7 @@ export default function App() {
         <div className="left-col">
           <RulesPanel
             history={{ ...hist, undo, redo }}
+            saveStatus={saveStatus}
             onShare={() => setSharing(true)}
             breakpoints={breakpoints}
             onToggleBreakpoint={toggleBreakpoint}

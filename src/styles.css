@@ -359,6 +359,89 @@ input.invalid {
   margin-top: 2px;
 }
 
+/* ---- 自动保存反馈（编辑区顶部） ---- */
+
+.rules-save-state {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+}
+
+.rules-save-state.saved {
+  color: var(--ok);
+  border: none;
+  background: transparent;
+  padding: 0 2px;
+}
+
+.rules-save-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rules-save-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rules-save-issues {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.rules-save-issues li {
+  margin: 2px 0;
+}
+
+button.rules-save-issue-link {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed var(--error);
+  border-radius: 0;
+  padding: 0;
+  color: var(--text);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.rules-save-issue-link:hover {
+  color: var(--error);
+}
+
+/* 未保存条件行：整行描红 + 行内原因 */
+.query-cond-row.cond-invalid {
+  outline: 1px solid var(--error);
+  outline-offset: 2px;
+  border-radius: 6px;
+  padding: 4px 6px;
+  flex-wrap: wrap;
+}
+
+.cond-error {
+  flex-basis: 100%;
+  color: var(--error);
+  font-size: 12px;
+}
+
+/* 点击保存反馈原因定位后短暂闪烁 */
+@keyframes locate-flash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(91, 157, 255, 0.85);
+  }
+  30% {
+    box-shadow: 0 0 0 3px rgba(91, 157, 255, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(91, 157, 255, 0);
+  }
+}
+
+.locate-flash {
+  animation: locate-flash 1.5s ease-out 1;
+  border-radius: 8px;
+}
+
 @media (max-width: 720px) {
   .rule-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -5,10 +5,13 @@ import { analyzeShadowing, type ShadowReport } from '../shadow';
 import { SAMPLE_RULES } from '../samples';
 import { RuleCard } from './RuleCard';
 import { BundleExportDialog } from './BundleExportDialog';
+import { RulesSaveStatusBar } from './RulesSaveStatusBar';
+import type { RulesSaveStatus } from '../saveStatus';
 import type { RuleHistoryApi } from '../useRuleHistory';
 
 interface Props {
   history: RuleHistoryApi;
+  saveStatus: RulesSaveStatus;
   onShare: () => void;
   /** 已设置断点的规则 id 集合（仅当前页面会话保留） */
   breakpoints: ReadonlySet<string>;
@@ -22,14 +25,26 @@ export interface TextSession<T> {
   end: (next: T) => void;
 }
 
+/** 某条规则上当前存在的保存校验问题（供卡片高亮对应字段 / 条件行） */
+export interface RuleSaveIssues {
+  /** 规则级问题（无具体条件）的原因列表 */
+  ruleMessages: string[];
+  /** 条件下标 → 该条件的问题原因列表 */
+  conditionMessages: Map<number, string[]>;
+  /** 涉及动作目标等字段（用于给字段输入加 invalid 描边） */
+  fields: Set<string>;
+}
+
 export function RulesPanel({
   history,
+  saveStatus,
   onShare,
   breakpoints,
   onToggleBreakpoint,
 }: Props) {
   const { rules, canUndo, canRedo, commit } = history;
   const fileRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [exportingBundle, setExportingBundle] = useState(false);
 
@@ -40,6 +55,63 @@ export function RulesPanel({
     for (const report of analyzeShadowing(rules)) map.set(report.ruleId, report);
     return map;
   }, [rules]);
+
+  // 未保存（校验失败）时，把问题按规则下标分发给对应卡片高亮
+  const saveIssuesByIndex = useMemo(() => {
+    if (saveStatus.kind !== 'invalid') return new Map<number, RuleSaveIssues>();
+    const map = new Map<number, RuleSaveIssues>();
+    for (const issue of saveStatus.issues) {
+      if (issue.ruleIndex < 0 || issue.ruleIndex >= rules.length) continue;
+      let entry = map.get(issue.ruleIndex);
+      if (entry === undefined) {
+        entry = {
+          ruleMessages: [],
+          conditionMessages: new Map<number, string[]>(),
+          fields: new Set<string>(),
+        };
+        map.set(issue.ruleIndex, entry);
+      }
+      if (issue.conditionIndex !== null) {
+        const list = entry.conditionMessages.get(issue.conditionIndex) ?? [];
+        list.push(issue.message);
+        entry.conditionMessages.set(issue.conditionIndex, list);
+      } else {
+        entry.ruleMessages.push(issue.message);
+      }
+      if (issue.field !== undefined) entry.fields.add(issue.field);
+    }
+    return map;
+  }, [saveStatus, rules.length]);
+
+  /** 点击保存反馈中的原因：滚动定位到规则卡片（及条件行）并短暂高亮 */
+  const locate = (ruleIndex: number, conditionIndex: number | null) => {
+    const panel = panelRef.current;
+    if (panel === null) return;
+    const card = panel.querySelector<HTMLElement>(
+      `[data-rule-index="${ruleIndex}"]`,
+    );
+    if (card === null) return;
+    let target: HTMLElement = card;
+    if (conditionIndex !== null) {
+      const row = card.querySelector<HTMLElement>(
+        `[data-cond-index="${conditionIndex}"]`,
+      );
+      if (row !== null) target = row;
+    }
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.remove('locate-flash');
+    // 强制重启动画（连续点击同一条原因时也要重新闪烁）
+    void target.offsetWidth;
+    target.classList.add('locate-flash');
+    window.setTimeout(() => target.classList.remove('locate-flash'), 1600);
+    // 定位到条件行时把参数名输入框聚焦，方便直接修正
+    if (conditionIndex !== null) {
+      const nameInput = target.querySelector<HTMLInputElement>(
+        'input[placeholder="参数名"]',
+      );
+      nameInput?.focus();
+    }
+  };
 
   const update = (i: number, next: Rule) =>
     commit(rules.map((r, j) => (j === i ? next : r)));
@@ -99,7 +171,7 @@ export function RulesPanel({
   });
 
   return (
-    <section className="panel">
+    <section className="panel" ref={panelRef}>
       <div className="panel-title">
         <h2>规则表（按顺序匹配，首条命中生效）</h2>
         <div className="toolbar">
@@ -145,6 +217,12 @@ export function RulesPanel({
         </div>
       </div>
 
+      <RulesSaveStatusBar
+        status={saveStatus}
+        rules={rules}
+        onLocate={locate}
+      />
+
       {importError && <div className="banner error">导入失败：{importError}</div>}
 
       {shadowMap.size > 0 && (
@@ -165,6 +243,7 @@ export function RulesPanel({
             total={rules.length}
             shadow={shadowMap.get(rule.id)}
             breakpoint={breakpoints.has(rule.id)}
+            saveIssues={saveIssuesByIndex.get(i)}
             onCommit={(next) => update(i, next)}
             session={textSession(i)}
             onMove={(dir) => move(i, dir)}

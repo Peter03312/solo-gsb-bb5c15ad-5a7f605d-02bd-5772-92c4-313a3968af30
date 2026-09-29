@@ -8,7 +8,7 @@ import {
   REDIRECT_STATUSES,
 } from '../types';
 import type { ShadowReport } from '../shadow';
-import type { TextSession } from './RulesPanel';
+import type { RuleSaveIssues, TextSession } from './RulesPanel';
 
 interface Props {
   rule: Rule;
@@ -18,6 +18,8 @@ interface Props {
   shadow?: ShadowReport;
   /** 该规则上是否设有断点（仅保留在当前页面会话） */
   breakpoint: boolean;
+  /** 整张规则表保存被拒时，落在本规则上的校验问题（参数名为空等）；无则省略 */
+  saveIssues?: RuleSaveIssues;
   /** 离散改动（下拉选择、启停等）：立即作为一步进入历史 */
   onCommit: (next: Rule) => void;
   /** 文本输入框的聚焦 / 输入 / 失焦：同一次聚焦周期合并为一步 */
@@ -58,6 +60,7 @@ export function RuleCard({
   total,
   shadow,
   breakpoint,
+  saveIssues,
   onCommit,
   session,
   onMove,
@@ -103,6 +106,7 @@ export function RuleCard({
 
   return (
     <div
+      data-rule-index={index}
       className={`rule-card${rule.enabled ? '' : ' rule-off'}${shadow ? ' rule-shadowed' : ''}${breakpoint ? ' rule-breakpoint' : ''}`}
     >
       <div className="rule-head">
@@ -196,6 +200,7 @@ export function RuleCard({
           <label className="span-2">
             目标（可引用 :参数）
             <input
+              className={saveIssues?.fields.has('action.target') ? 'invalid' : undefined}
               value={rule.action.target}
               placeholder="/new/path/:id 或 https://other.com/:id"
               spellCheck={false}
@@ -234,43 +239,62 @@ export function RuleCard({
           </span>
           <button onClick={addCond}>＋ 添加条件</button>
         </div>
-        {rule.query.map((cond, ci) => (
-          <div className="query-cond-row" key={ci}>
-            <input
-              placeholder="参数名"
-              spellCheck={false}
-              {...condTextProps(ci, 'name')}
-            />
-            <select
-              value={cond.op}
-              onChange={(e) => setCondOp(ci, e.target.value as QueryOperator)}
+        {rule.query.map((cond, ci) => {
+          const condMessages = saveIssues?.conditionMessages.get(ci);
+          const condInvalid = condMessages !== undefined;
+          return (
+            <div
+              className={`query-cond-row${condInvalid ? ' cond-invalid' : ''}`}
+              key={ci}
+              data-cond-index={ci}
             >
-              {QUERY_OPERATORS.map((op) => (
-                <option key={op} value={op}>
-                  {QUERY_OPERATOR_LABELS[op]}
-                </option>
-              ))}
-            </select>
-            {cond.op === 'equals' && (
               <input
-                placeholder="比较值（同名参数任一值相等即命中）"
+                className={condInvalid ? 'invalid' : undefined}
+                placeholder="参数名"
                 spellCheck={false}
-                {...condTextProps(ci, 'value')}
+                {...condTextProps(ci, 'name')}
               />
-            )}
-            <button
-              className="danger"
-              title="删除该条件"
-              onClick={() => removeCond(ci)}
-            >
-              删除
-            </button>
-          </div>
-        ))}
+              <select
+                value={cond.op}
+                onChange={(e) => setCondOp(ci, e.target.value as QueryOperator)}
+              >
+                {QUERY_OPERATORS.map((op) => (
+                  <option key={op} value={op}>
+                    {QUERY_OPERATOR_LABELS[op]}
+                  </option>
+                ))}
+              </select>
+              {cond.op === 'equals' && (
+                <input
+                  placeholder="比较值（同名参数任一值相等即命中）"
+                  spellCheck={false}
+                  {...condTextProps(ci, 'value')}
+                />
+              )}
+              <button
+                className="danger"
+                title="删除该条件"
+                onClick={() => removeCond(ci)}
+              >
+                删除
+              </button>
+              {condInvalid && (
+                <span className="cond-error" role="alert">
+                  {condMessages.join('；')}
+                </span>
+              )}
+            </div>
+          );
+        })}
         {dupNames.length > 0 && (
           <div className="banner error">
             查询条件存在重复参数名：{dupNames.map((n) => `「${n}」`).join('、')}
             。同一规则内参数名必须唯一，否则导入校验与导出路由器会拦截。
+          </div>
+        )}
+        {saveIssues && saveIssues.ruleMessages.length > 0 && (
+          <div className="banner error" role="alert">
+            {saveIssues.ruleMessages.join('；')}
           </div>
         )}
       </div>
